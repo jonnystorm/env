@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Log output:
+#
+# * 51c333e    (12 days)    <Gary Bernhardt>   add vim-eunuch
+#
+# The time massaging regexes start with ^[^<]* because that ensures that they
+# only operate before the first "<". That "<" will be the beginning of the
+# author name, ensuring that we don't destroy anything in the commit message
+# that looks like time.
+
+
+function color_merge_commits
+{
+  local pattern="(Merge (branch|remote-tracking branch|pull request) .*\$)"
+  local ansi_red='\033[31m'
+  local ansi_reset='\033[0m'
+
+  cat | sed \
+    -Ee "s/$pattern/$(printf $ansi_red)\1$(printf $ansi_reset)/"
+}
+
+function replace_years_ago_with_just_years
+{
+  # '(2 years ago)' -> '(2 years)'
+  #
+  cat | sed -Ee 's/(^[^<]*) ago\)/\1)/'
+}
+
+function replace_years_and_months_with_just_years
+{
+  # '(2 years, 5 months)' -> '(2 years)'
+  #
+  cat | sed -Ee 's/(^[^<]*), [[:digit:]]+ .*months?\)/\1)/'
+}
+
+function separate_into_columns
+{
+  local separator=$1
+
+  cat | column -ts "$separator"
+}
+
+function paging_is_declined
+{
+  [ -n "$GIT_NO_PAGER" ]
+}
+
+function page_as_needed
+{
+  cat | less \
+    --quit-if-one-screen \
+    --no-init            \
+    --RAW-CONTROL-CHARS  \
+    --chop-long-lines
+}
+
+function page_when_appropriate
+{
+  if paging_is_declined
+  then cat
+  else page_as_needed
+  fi
+}
+
+pretty_git_log() {
+  local hash="%C(yellow)%h%Creset"
+  local relative_time="%Cgreen(%ar)%Creset"
+  local author="%C(bold blue)<%an>%Creset"
+  local refs="%C(bold red)%d%Creset"
+  local subject="%s"
+
+  local sep='좙'
+  local format="$hash${sep}$relative_time${sep}$author${sep}$refs $subject"
+
+  git -c color.ui=always log \
+      --graph --pretty="tformat:$format" $* |
+    replace_years_ago_with_just_years |
+    replace_years_and_months_with_just_years |
+    separate_into_columns "$sep" |
+    color_merge_commits |
+    page_when_appropriate
+}
+
